@@ -28,6 +28,15 @@
 #define PG_DIR_SIZE (4 * PAGE_SIZE)
 
 
+#define PROT_NONE  0
+#define PROT_READ  1
+#define PROT_WRITE 2
+#define PROT_EXEC  4
+
+#define MAP_ANONYMOUS 0x20
+#define MAP_POPULATE  1
+
+
 #ifndef __ASSEMBLER__
 
 #include "gfp_types.h"
@@ -39,7 +48,9 @@ void map_pages(struct task_struct* task,
                enum vm_type vm_type,
                unsigned long va,
                unsigned long page,
-               size_t size);
+               size_t size,
+               unsigned long vm_prot,
+               unsigned long vm_flags);
 
 int copy_virt_memory(struct task_struct* dst);
 unsigned long allocate_kernel_pages(size_t size, gfp_t flags);
@@ -47,7 +58,9 @@ unsigned long allocate_user_pages(struct task_struct* task,
                                   enum vm_type vm_type,
                                   unsigned long va,
                                   size_t size,
-                                  gfp_t flags);
+                                  gfp_t flags,
+                                  unsigned long vm_prot,
+                                  unsigned long vm_flags);
 
 struct vm_area_struct* find_vm_area(struct task_struct* task,
                                     enum vm_type vm_type);
@@ -55,10 +68,14 @@ void add_vm_area(struct task_struct* task,
                  enum vm_type vm_type,
                  unsigned long va_start,
                  unsigned long pa_start,
-                 unsigned long area_sz);
+                 unsigned long area_sz,
+                 unsigned long vm_prot,
+                 unsigned long vm_flags);
 
 void invalidate_pages(struct task_struct* task, unsigned long va, size_t size);
 unsigned long* find_page_entry(struct task_struct* task, unsigned long va);
+
+void delete_page_tables(struct task_struct* task);
 
 #endif
 

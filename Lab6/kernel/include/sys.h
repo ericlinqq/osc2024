@@ -2,7 +2,7 @@
 #define SYS_H
 
 
-#define NR_SYSCALLS 11
+#define NR_SYSCALLS 12
 
 #define SYS_GET_PID_NUMBER    0
 #define SYS_UART_READ_NUMBER  1
@@ -14,7 +14,8 @@
 #define SYS_KILL_NUMBER       7
 #define SYS_SIGNAL_NUMBER     8
 #define SYS_SIGKILL_NUMBER    9
-#define SYS_SIG_RETURN_NUMBER 10
+#define SYS_MMAP_NUMBER       10
+#define SYS_SIG_RETURN_NUMBER 11
 
 #ifndef __ASSEMBLER__
 
@@ -29,6 +30,12 @@ int sys_mbox_call(unsigned char ch, unsigned int* mbox);
 void sys_kill(int pid);
 void sys_signal(int SIGNAL, void (*handler)());
 void sys_sigkill(int pid, int SIGNAL);
+void* sys_mmap(void* addr,
+               size_t len,
+               int prot,
+               int flags,
+               int fd,
+               int file_offset);
 void sys_sig_return(void);
 
 extern int getpid(void);

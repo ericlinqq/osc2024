@@ -61,7 +61,8 @@ void handle_sig(void)
         // registered signal handler
         if (!current_task->sig_stack)
             current_task->sig_stack = (void*)allocate_user_pages(
-                current_task, STK, USR_SIG_STK_ADDR, USR_SIG_STK_SZ, 0);
+                current_task, STK, USR_SIG_STK_ADDR, USR_SIG_STK_SZ, 0,
+                PROT_READ | PROT_WRITE, MAP_ANONYMOUS);
 
         struct pt_regs* sig_regs = task_sig_regs(current_task);
         struct pt_regs* regs = task_pt_regs(current_task);

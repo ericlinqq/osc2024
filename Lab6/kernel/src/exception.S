@@ -179,8 +179,8 @@ el0_sync:
   lsr x24, x25, #ESR_ELx_EC_SHIFT
   cmp x24, #ESR_ELx_EC_SVC64        // SVC in 64-bit state
   b.eq el0_svc
-  cmp x24, #ESR_ELx_EC_DABT_LOW     // data abort in EL0
-  b.eq el0_da
+  // cmp x24, #ESR_ELx_EC_DABT_LOW     // data abort in EL0
+  // b.eq el0_da
   handle_invalid_entry 0, SYNC_ERROR
 
 scnr .req x25

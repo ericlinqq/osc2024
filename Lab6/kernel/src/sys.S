@@ -60,6 +60,12 @@ sigkill:
   svc #0
   ret
 
+.global mmap
+mmap:
+  mov w8, #SYS_MMAP_NUMBER
+  svc #0
+  ret
+
 .global sig_return
 sig_return:
   mov w8, #SYS_SIG_RETURN_NUMBER

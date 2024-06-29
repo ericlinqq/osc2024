@@ -4,8 +4,10 @@
 #include "mailbox.h"
 #include "memory.h"
 #include "mini_uart.h"
+#include "page_alloc.h"
 #include "sched.h"
 #include "signal.h"
+#include "slab.h"
 
 int sys_getpid(void)
 {
@@ -82,6 +84,51 @@ void sys_sigkill(int pid, int SIGNAL)
     recv_sig(task, SIGNAL);
 }
 
+void* sys_mmap(void* addr,
+               size_t len,
+               int prot,
+               int flags,
+               int fd,
+               int file_offset)
+{
+    struct vm_area_struct* vm_area;
+    unsigned long addr_align = (unsigned long)addr & PAGE_MASK;
+    if (addr) {
+        list_for_each_entry (vm_area, &current_task->mm.mmap_list, list) {
+            if (vm_area->va_start <= (unsigned long)addr &&
+                vm_area->va_start + vm_area->area_sz > (unsigned long)addr) {
+                addr = NULL;
+                break;
+            }
+        }
+    }
+
+    if (!addr) {
+        while (1) {
+            bool used = false;
+            list_for_each_entry (vm_area, &current_task->mm.mmap_list, list) {
+                if (vm_area->va_start <= addr_align &&
+                    vm_area->va_start + vm_area->area_sz > addr_align) {
+                    used = true;
+                    break;
+                }
+            }
+            if (used)
+                addr_align += PAGE_SIZE;
+            else
+                break;
+        }
+    }
+
+    size_t len_align = (size_t)PAGE_ALIGN_UP((void*)len);
+
+
+    allocate_user_pages(current_task, DATA, addr_align, len_align, 0, prot,
+                        flags);
+
+    return (void*)addr_align;
+}
+
 void sys_sig_return(void)
 {
     do_sig_return();
@@ -97,4 +144,5 @@ void* const sys_call_table[] = {[SYS_GET_PID_NUMBER] = sys_getpid,
                                 [SYS_KILL_NUMBER] = sys_kill,
                                 [SYS_SIGNAL_NUMBER] = sys_signal,
                                 [SYS_SIGKILL_NUMBER] = sys_sigkill,
+                                [SYS_MMAP_NUMBER] = sys_mmap,
                                 [SYS_SIG_RETURN_NUMBER] = sys_sig_return};

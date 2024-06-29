@@ -97,11 +97,11 @@ void delete_task(struct task_struct* task)
 
     struct vm_area_struct *vm_area, *safe;
     list_for_each_entry_safe (vm_area, safe, &task->mm.mmap_list, list) {
-        if (task->mm.pgd != pg_dir && vm_area->vm_type == TABLE)
-            kfree((const void*)vm_area->pa_start + VA_START);
         list_del(&vm_area->list);
         kfree(vm_area);
     }
+
+    delete_page_tables(task);
 
     free_task(task);
 }

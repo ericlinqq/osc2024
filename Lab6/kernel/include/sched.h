@@ -42,7 +42,7 @@ struct cpu_context {
     unsigned long pc;
 };
 
-enum vm_type { TABLE, STK, IO, PROG };
+enum vm_type { STK, IO, PROG, DATA };
 
 struct vm_area_struct {
     enum vm_type vm_type;
@@ -50,6 +50,8 @@ struct vm_area_struct {
     unsigned long va_start;
     unsigned long pa_start;
     unsigned long area_sz;
+    unsigned long vm_prot;
+    unsigned long vm_flags;
 };
 
 struct mm_struct {

@@ -87,8 +87,9 @@ int move_to_user_mode(unsigned long pc, unsigned long size)
 
     current_task->prog_size = size;
 
-    void* target = (void*)allocate_user_pages(current_task, PROG, USR_CODE_ADDR,
-                                              current_task->prog_size, 0);
+    void* target = (void*)allocate_user_pages(
+        current_task, PROG, USR_CODE_ADDR, current_task->prog_size, 0,
+        PROT_READ | PROT_EXEC, MAP_ANONYMOUS);
 
     if (!target)
         return -1;
@@ -104,8 +105,9 @@ int move_to_user_mode(unsigned long pc, unsigned long size)
     if (current_task->user_stack)
         goto set_sp;
 
-    void* stack = (void*)allocate_user_pages(current_task, STK, USR_STK_ADDR,
-                                             USR_STK_SZ, 0);
+    void* stack =
+        (void*)allocate_user_pages(current_task, STK, USR_STK_ADDR, USR_STK_SZ,
+                                   0, PROT_READ | PROT_WRITE, MAP_ANONYMOUS);
 
     if (!stack)
         return -1;
@@ -115,9 +117,8 @@ int move_to_user_mode(unsigned long pc, unsigned long size)
 
 
     map_pages(current_task, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
-              IO_PM_END_ADDR - IO_PM_START_ADDR);
-    add_vm_area(current_task, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
-                IO_PM_END_ADDR - IO_PM_START_ADDR);
+              IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
+              MAP_ANONYMOUS);
 
 
 
