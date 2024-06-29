@@ -30,7 +30,7 @@ struct task_struct* create_task(long priority, long preempt_count)
     new_task->pid = nr_tasks++;
     new_task->priority = priority;
     new_task->preempt_count = preempt_count;
-    new_task->mm.pgd = pg_dir;
+    new_page_tables(new_task);
     INIT_LIST_HEAD(&new_task->mm.mmap_list);
     return new_task;
 }
@@ -95,15 +95,7 @@ void delete_task(struct task_struct* task)
     if (task->sig_stack)
         kfree(task->sig_stack);
 
-    struct vm_area_struct *vm_area, *safe;
-    list_for_each_entry_safe (vm_area, safe, &task->mm.mmap_list, list) {
-        list_del(&vm_area->list);
-        kfree(vm_area);
-    }
-
-    delete_page_tables(task);
-
-    free_task(task);
+    free_vm(task);
 }
 
 void kill_zombies(void)
@@ -137,7 +129,6 @@ int sched_init(void)
 {
     task_struct =
         kmem_cache_create("task_struct", sizeof(struct task_struct), -1);
-
     if (!task_struct)
         return 0;
 

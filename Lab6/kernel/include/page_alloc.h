@@ -22,6 +22,7 @@ struct free_area {
 // 48-bytes
 struct page {
     uint64_t flags;
+    uint32_t ref_cnt;
     union {
         /* PAGE */
         struct {
@@ -90,5 +91,9 @@ void* page_to_phys(struct page* page);
 struct page* phys_to_page(void* phys);
 
 size_t get_order(size_t size);
+
+uint32_t get_page_refcnt(struct page* page);
+void page_refcnt_inc(struct page* page);
+void page_refcnt_dec(struct page* page);
 
 #endif /* PAGE_ALLOC_H */

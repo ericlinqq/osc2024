@@ -108,7 +108,9 @@ void* sys_mmap(void* addr,
             bool used = false;
             list_for_each_entry (vm_area, &current_task->mm.mmap_list, list) {
                 if (vm_area->va_start <= addr_align &&
-                    vm_area->va_start + vm_area->area_sz > addr_align) {
+                    (unsigned long)PAGE_ALIGN_UP(
+                        (void*)(vm_area->va_start + vm_area->area_sz)) >
+                        addr_align) {
                     used = true;
                     break;
                 }

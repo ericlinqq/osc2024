@@ -35,6 +35,21 @@ size_t MAX_ALLOC_SIZE, MIN_ALLOC_SIZE;
 #define get_order_from_bucket(__bucket) ((__bucket) + MIN_ORDER)
 #define get_bucket_from_order(__order)  ((__order) - MIN_ORDER)
 
+inline uint32_t get_page_refcnt(struct page* page)
+{
+    return page->ref_cnt;
+}
+
+inline void page_refcnt_inc(struct page* page)
+{
+    page->ref_cnt++;
+}
+
+inline void page_refcnt_dec(struct page* page)
+{
+    page->ref_cnt--;
+}
+
 inline void* PAGE_ALIGN_DOWN(void* x)
 {
     return (void*)((((uintptr_t)x - base_ptr) & ~(PAGE_SIZE - 1)) + base_ptr);
@@ -105,6 +120,7 @@ static void add_page_to_freelist(struct page* page, size_t order)
     SetPageBuddy(page);
 
     page->private = order;
+    page->ref_cnt = 0;
 }
 
 

@@ -8,6 +8,36 @@
 #include "sched.h"
 #include "slab.h"
 
+#define alloc_vm_area() \
+    (struct vm_area_struct*)kmem_cache_alloc(vm_area_struct, 0);
+#define free_vm_area(ptr) kmem_cache_free(vm_area_struct, (ptr));
+
+static struct kmem_cache* vm_area_struct;
+
+int vm_init(void)
+{
+    vm_area_struct =
+        kmem_cache_create("vm_area_struct", sizeof(struct vm_area_struct), -1);
+    if (!vm_area_struct)
+        return 0;
+    return 1;
+}
+
+void free_vm(struct task_struct* task)
+{
+    struct vm_area_struct *vm_area, *safe;
+    list_for_each_entry_safe (vm_area, safe, &task->mm.mmap_list, list) {
+        list_del(&vm_area->list);
+        free_vm_area(vm_area);
+    }
+    delete_page_tables(task);
+}
+
+inline void new_page_tables(struct task_struct* task)
+{
+    task->mm.pgd = (unsigned long)kzmalloc(PAGE_SIZE, 0) - VA_START;
+}
+
 void delete_page_tables(struct task_struct* task)
 {
     if (task->mm.pgd == pg_dir)
@@ -59,20 +89,23 @@ void add_vm_area(struct task_struct* task,
                  unsigned long vm_prot,
                  unsigned long vm_flags)
 {
-    struct vm_area_struct* vm_area = kmalloc(sizeof(struct vm_area_struct), 0);
+    struct vm_area_struct* vm_area = alloc_vm_area();
     vm_area->vm_type = vm_type;
-    vm_area->va_start = va_start;
-    vm_area->pa_start = pa_start;
-    vm_area->area_sz = area_sz;
+    vm_area->va_start = va_start & PAGE_MASK;
+    vm_area->pa_start = pa_start & PAGE_MASK;
+    vm_area->area_sz = (unsigned long)PAGE_ALIGN_UP((void*)area_sz);
     vm_area->vm_prot = vm_prot;
     vm_area->vm_flags = vm_flags;
     list_add(&vm_area->list, &task->mm.mmap_list);
+
+    if (vm_area->vm_type != IO)
+        page_refcnt_inc(phys_to_page((void*)vm_area->pa_start));
 }
 
 unsigned long allocate_kernel_pages(size_t size, gfp_t flags)
 {
     unsigned long page = (unsigned long)kmalloc(size, flags);
-    if (!page)
+    if (page == VA_START)
         return 0;
     return page;
 }
@@ -86,9 +119,10 @@ unsigned long allocate_user_pages(struct task_struct* task,
                                   unsigned long vm_flags)
 {
     unsigned long page = (unsigned long)kmalloc(size, flags);
-    if (!page)
+    if (page == VA_START)
         return 0;
-    map_pages(task, vm_type, va, page, size, vm_prot, vm_flags);
+    // map_pages(task, vm_type, va, page, size, vm_prot, vm_flags);
+    add_vm_area(task, vm_type, va, page, size, vm_prot, vm_flags);
     return page;
 }
 
@@ -135,7 +169,7 @@ void map_page(struct task_struct* task,
               unsigned long vm_flags)
 {
     if (task->mm.pgd == pg_dir)
-        task->mm.pgd = (unsigned long)kzmalloc(PAGE_SIZE, 0) - VA_START;
+        new_page_tables(task);
 
     unsigned long pgd = task->mm.pgd;
 
@@ -187,47 +221,103 @@ int copy_virt_memory(struct task_struct* dst)
                vm_area->area_sz);
     }
 
-    map_pages(dst, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
-              IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
-              MAP_ANONYMOUS);
+    // map_pages(dst, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
+    //           IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
+    //           MAP_ANONYMOUS);
+    add_vm_area(dst, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
+                IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
+                MAP_ANONYMOUS);
 
     return 0;
 }
 
-// static int ind = 1;
+int segmentation_fault_handler(unsigned long addr)
+{
+    uart_printf("[Segmentation fault]: 0x%x, Kill process\n", addr);
+    exit_process();
+    return 0;
+}
+
+int translation_fault_handler(unsigned long addr)
+{
+    uart_printf("[Translation fault]: 0x%x\n", addr);
+
+    unsigned long addr_align = addr & PAGE_MASK;
+
+    struct vm_area_struct* vm_area;
+
+    list_for_each_entry (vm_area, &current_task->mm.mmap_list, list) {
+        if (addr_align >= vm_area->va_start &&
+            addr_align < (unsigned long)PAGE_ALIGN_UP(
+                             (void*)(vm_area->va_start + vm_area->area_sz))) {
+            map_page(current_task, addr_align,
+                     vm_area->pa_start + (addr_align - vm_area->va_start),
+                     vm_area->vm_prot, vm_area->vm_flags);
+            return 0;
+        }
+    }
+
+    return segmentation_fault_handler(addr);
+    return -1;
+}
+
+int permission_fault_handler(unsigned long addr)
+{
+    uart_printf("[Permission fault]: 0x%x\n", addr);
+
+    unsigned long addr_align = addr & PAGE_MASK;
+
+    struct vm_area_struct* vm_area;
+    list_for_each_entry (vm_area, &current_task->mm.mmap_list, list) {
+        if (addr_align >= vm_area->va_start &&
+            addr_align < (unsigned long)PAGE_ALIGN_UP((void*)vm_area->va_start +
+                                                      vm_area->area_sz)) {
+            unsigned long pa_addr =
+                vm_area->pa_start + (addr_align - vm_area->va_start);
+            struct page* page = phys_to_page((void*)vm_area->pa_start);
+
+            switch (vm_area->vm_type) {
+            case PROG:
+                vm_area->vm_prot |= PROT_EXEC;
+                break;
+            case STK:
+                vm_area->vm_prot |= PROT_WRITE;
+                break;
+            default:
+                segmentation_fault_handler(addr);
+                break;
+            }
+
+            if (get_page_refcnt(page) > 1) {
+                page_refcnt_dec(page);
+                void* new_addr = kmalloc(vm_area->area_sz, 0);
+                memcpy(new_addr, (void*)vm_area->pa_start, vm_area->area_sz);
+                vm_area->pa_start = (unsigned long)new_addr;
+                pa_addr = vm_area->pa_start + (addr_align - vm_area->va_start);
+            }
+
+            map_page(current_task, addr_align, pa_addr, vm_area->vm_prot,
+                     vm_area->vm_flags);
+            return 0;
+        }
+    }
+
+    return segmentation_fault_handler(addr);
+    return -1;
+}
+
 
 int do_mem_abort(unsigned long addr, unsigned long esr)
 {
-    uart_printf("[Translation fault]: 0x%x\n", addr);
-    unsigned long addr_align = addr & PAGE_MASK;
     unsigned long dfs = (esr & 0b111111);
 
-    if ((dfs & 0b111100) == 0b100) {
-        unsigned long page = (unsigned long)kmalloc(PAGE_SIZE, 0);
-        if (!page)
-            return -1;
-        // map_page(current_task, addr_align, page);
-        // ind++;
-        // if (ind > 2)
-        // return -1;
-        return 0;
-    }
-
     if (dfs == 0b000100 || dfs == 0b000101 || dfs == 0b000110 ||
-        dfs == 0b000111) {
-        struct vm_area_struct* vm_area;
-        list_for_each_entry (vm_area, &current_task->mm.mmap_list, list) {
-            if (addr_align >= vm_area->va_start &&
-                addr_align <=
-                    (unsigned long)PAGE_ALIGN_UP(
-                        (void*)(vm_area->va_start + vm_area->area_sz))) {
-                // map_page(current_task, addr_align,
-                //          vm_area->pa_start + (addr_align -
-                //          vm_area->va_start));
-                return 0;
-            }
-        }
-    }
+        dfs == 0b000111)
+        return translation_fault_handler(addr);
+
+    else if (dfs == 0b001100 || dfs == 0b001101 || dfs == 0b001110 ||
+             dfs == 0b001111)
+        return permission_fault_handler(addr);
 
     return -1;
 }

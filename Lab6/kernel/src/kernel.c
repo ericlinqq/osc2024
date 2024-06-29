@@ -51,6 +51,9 @@ void kernel_main(uintptr_t dtb_ptr)
     if (!sched_init())
         goto inf_loop;
 
+    if (!vm_init())
+        goto inf_loop;
+
     enable_irq();
 
     // test_thread();

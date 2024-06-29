@@ -96,7 +96,8 @@ const char* entry_error_type[] = {"SYNC_INVALID_EL1t",   "IRQ_INVALID_EL1t",
 
                                   "SYNC_INVALID_EL0_32", "IRQ_INVALID_EL0_32",
                                   "FIQ_INVALID_EL0_32",  "ERROR_INVALID_EL0_32",
-                                  "SYNC_ERROR",          "SYSCALL_ERROR"};
+                                  "SYNC_ERROR",          "SYSCALL_ERROR",
+                                  "DATA_ABORT_ERROR"};
 
 void show_invalid_entry_message(int type,
                                 unsigned long spsr,

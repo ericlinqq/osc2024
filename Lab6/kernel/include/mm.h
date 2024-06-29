@@ -42,6 +42,9 @@
 #include "gfp_types.h"
 #include "sched.h"
 
+int vm_init(void);
+void free_vm(struct task_struct* task);
+
 void memzero(unsigned long src, unsigned long n);
 
 void map_pages(struct task_struct* task,
@@ -75,6 +78,7 @@ void add_vm_area(struct task_struct* task,
 void invalidate_pages(struct task_struct* task, unsigned long va, size_t size);
 unsigned long* find_page_entry(struct task_struct* task, unsigned long va);
 
+void new_page_tables(struct task_struct* task);
 void delete_page_tables(struct task_struct* task);
 
 #endif

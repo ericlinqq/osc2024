@@ -116,9 +116,12 @@ int move_to_user_mode(unsigned long pc, unsigned long size)
     current_task->user_stack = stack;
 
 
-    map_pages(current_task, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
-              IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
-              MAP_ANONYMOUS);
+    // map_pages(current_task, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
+    //           IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
+    //           MAP_ANONYMOUS);
+    add_vm_area(current_task, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
+                IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
+                MAP_ANONYMOUS);
 
 
 
