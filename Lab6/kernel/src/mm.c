@@ -70,6 +70,76 @@ void delete_page_tables(struct task_struct* task)
     task->mm.pgd = pg_dir;
 }
 
+void copy_page_tables(struct task_struct* dst, struct task_struct* src)
+{
+    if (src->mm.pgd == pg_dir)
+        return;
+    unsigned long* src_pgd = (unsigned long*)(src->mm.pgd + VA_START);
+    unsigned long* dst_pgd = (unsigned long*)(dst->mm.pgd + VA_START);
+
+    for (int i = 0; i < PTRS_PER_TABLE; i++) {
+        unsigned long* src_pud =
+            (unsigned long*)((src_pgd[i] + VA_START) & PAGE_MASK);
+
+        if (src_pud == (unsigned long*)VA_START)
+            continue;
+
+        unsigned long* dst_pud =
+            (unsigned long*)((dst_pgd[i] + VA_START) & PAGE_MASK);
+
+        if (dst_pud == (unsigned long*)VA_START)
+            dst_pgd[i] = ((unsigned long)kzmalloc(PAGE_SIZE, 0) - VA_START) |
+                         MM_TYPE_PAGE_TABLE;
+
+        dst_pud = (unsigned long*)((dst_pgd[i] + VA_START) & PAGE_MASK);
+
+        for (int j = 0; j < PTRS_PER_TABLE; j++) {
+            unsigned long* src_pmd =
+                (unsigned long*)((src_pud[j] + VA_START) & PAGE_MASK);
+
+            if (src_pmd == (unsigned long*)VA_START)
+                continue;
+
+            unsigned long* dst_pmd =
+                (unsigned long*)((dst_pud[j] + VA_START) & PAGE_MASK);
+
+            if (dst_pmd == (unsigned long*)VA_START)
+                dst_pud[j] =
+                    ((unsigned long)kzmalloc(PAGE_SIZE, 0) - VA_START) |
+                    MM_TYPE_PAGE_TABLE;
+
+            dst_pmd = (unsigned long*)((dst_pud[j] + VA_START) & PAGE_MASK);
+
+            for (int k = 0; k < PTRS_PER_TABLE; k++) {
+                unsigned long* src_pte =
+                    (unsigned long*)((src_pmd[j] + VA_START) & PAGE_MASK);
+
+                if (src_pte == (unsigned long*)VA_START)
+                    continue;
+
+                unsigned long* dst_pte =
+                    (unsigned long*)((dst_pmd[k] + VA_START) & PAGE_MASK);
+
+                if (dst_pte == (unsigned long*)VA_START)
+                    dst_pmd[k] =
+                        ((unsigned long)kzmalloc(PAGE_SIZE, 0) - VA_START) |
+                        MM_TYPE_PAGE_TABLE;
+
+                dst_pte = (unsigned long*)((dst_pmd[k] + VA_START) & PAGE_MASK);
+
+                for (int l = 0; l < PTRS_PER_TABLE; l++) {
+                    unsigned long entry = src_pte[l];
+                    if (!(entry & PAGE_MASK))
+                        continue;
+                    entry &= ~(0b11 << 6);
+                    entry |= MM_ACCESS_RO;
+                    dst_pte[l] = entry;
+                }
+            }
+        }
+    }
+}
+
 struct vm_area_struct* find_vm_area(struct task_struct* task,
                                     enum vm_type vm_type)
 {
@@ -210,23 +280,25 @@ int copy_virt_memory(struct task_struct* dst)
 
     struct vm_area_struct* vm_area;
     list_for_each_entry (vm_area, &src->mm.mmap_list, list) {
-        if (vm_area->vm_type == IO)
-            continue;
-        unsigned long kernel_va = allocate_user_pages(
-            dst, vm_area->vm_type, vm_area->va_start, vm_area->area_sz, 0,
-            vm_area->vm_prot, vm_area->vm_flags);
-        if (kernel_va == VA_START)
-            return -1;
-        memcpy((void*)kernel_va, (const void*)vm_area->pa_start,
-               vm_area->area_sz);
+        add_vm_area(dst, vm_area->vm_type, vm_area->va_start, vm_area->pa_start,
+                    vm_area->area_sz, vm_area->vm_prot, vm_area->vm_flags);
+        // if (vm_area->vm_type == IO)
+        //     continue;
+        // unsigned long kernel_va = allocate_user_pages(
+        //     dst, vm_area->vm_type, vm_area->va_start, vm_area->area_sz, 0,
+        //     vm_area->vm_prot, vm_area->vm_flags);
+        // if (kernel_va == VA_START)
+        //     return -1;
+        // memcpy((void*)kernel_va, (const void*)vm_area->pa_start,
+        //       vm_area->area_sz);
     }
 
     // map_pages(dst, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
     //           IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
     //           MAP_ANONYMOUS);
-    add_vm_area(dst, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
-                IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
-                MAP_ANONYMOUS);
+    // add_vm_area(dst, IO, IO_PM_START_ADDR, IO_PM_START_ADDR,
+    //             IO_PM_END_ADDR - IO_PM_START_ADDR, PROT_READ | PROT_WRITE,
+    //             MAP_ANONYMOUS);
 
     return 0;
 }
@@ -271,22 +343,11 @@ int permission_fault_handler(unsigned long addr)
     list_for_each_entry (vm_area, &current_task->mm.mmap_list, list) {
         if (addr_align >= vm_area->va_start &&
             addr_align < (unsigned long)PAGE_ALIGN_UP((void*)vm_area->va_start +
-                                                      vm_area->area_sz)) {
+                                                      vm_area->area_sz) &&
+            vm_area->vm_prot & PROT_WRITE) {
             unsigned long pa_addr =
                 vm_area->pa_start + (addr_align - vm_area->va_start);
             struct page* page = phys_to_page((void*)vm_area->pa_start);
-
-            switch (vm_area->vm_type) {
-            case PROG:
-                vm_area->vm_prot |= PROT_EXEC;
-                break;
-            case STK:
-                vm_area->vm_prot |= PROT_WRITE;
-                break;
-            default:
-                segmentation_fault_handler(addr);
-                break;
-            }
 
             if (get_page_refcnt(page) > 1) {
                 page_refcnt_dec(page);
@@ -309,14 +370,13 @@ int permission_fault_handler(unsigned long addr)
 
 int do_mem_abort(unsigned long addr, unsigned long esr)
 {
-    unsigned long dfs = (esr & 0b111111);
+    unsigned long dfs = (esr & DFSC_MASK);
 
-    if (dfs == 0b000100 || dfs == 0b000101 || dfs == 0b000110 ||
-        dfs == 0b000111)
+    if (dfs == TRANS_FAULT_0 || dfs == TRANS_FAULT_1 || dfs == TRANS_FAULT_2 ||
+        dfs == TRANS_FAULT_3)
         return translation_fault_handler(addr);
 
-    else if (dfs == 0b001100 || dfs == 0b001101 || dfs == 0b001110 ||
-             dfs == 0b001111)
+    else if (dfs == PERM_FAULT_1 || dfs == PERM_FAULT_2 || dfs == PERM_FAULT_3)
         return permission_fault_handler(addr);
 
     return -1;

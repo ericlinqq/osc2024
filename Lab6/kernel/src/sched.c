@@ -2,6 +2,7 @@
 #include "irq.h"
 #include "memory.h"
 #include "mini_uart.h"
+#include "page_alloc.h"
 #include "slab.h"
 #include "timer.h"
 #include "utils.h"
@@ -88,11 +89,12 @@ void delete_task(struct task_struct* task)
 {
     if (task->kernel_stack)
         kfree(task->kernel_stack);
-    if (task->user_stack)
+    if (task->user_stack &&
+        get_page_refcnt(phys_to_page(task->user_stack)) <= 0)
         kfree(task->user_stack);
-    if (task->prog)
+    if (task->prog && get_page_refcnt(phys_to_page(task->prog)) <= 0)
         kfree(task->prog);
-    if (task->sig_stack)
+    if (task->sig_stack && get_page_refcnt(phys_to_page(task->sig_stack)) <= 0)
         kfree(task->sig_stack);
 
     free_vm(task);
@@ -119,6 +121,7 @@ void check_waiting(void)
             entry->wait_task = NULL;
             list_del(&entry->list);
             entry->state = TASK_RUNNING;
+            ;
             list_add_tail(&entry->list, &running_queue);
         }
     }

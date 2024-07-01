@@ -35,6 +35,7 @@ int copy_process(unsigned long clone_flags, void* fn, void* arg1, void* arg2)
         *child_regs = *curr_regs;
         child_regs->regs[0] = 0;
         copy_virt_memory(new_task);
+        copy_page_tables(new_task, current_task);
 
         for (int i = 0; i < NR_SIGNAL; i++)
             new_task->sig_handler[i] = current_task->sig_handler[i];

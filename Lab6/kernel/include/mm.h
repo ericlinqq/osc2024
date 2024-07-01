@@ -36,6 +36,17 @@
 #define MAP_ANONYMOUS 0x20
 #define MAP_POPULATE  1
 
+#define DFSC_MASK 0b111111
+
+#define TRANS_FAULT_0 0b000100
+#define TRANS_FAULT_1 0b000101
+#define TRANS_FAULT_2 0b000110
+#define TRANS_FAULT_3 0b000111
+
+#define PERM_FAULT_1 0b001101
+#define PERM_FAULT_2 0b001110
+#define PERM_FAULT_3 0b001111
+
 
 #ifndef __ASSEMBLER__
 
@@ -80,6 +91,7 @@ unsigned long* find_page_entry(struct task_struct* task, unsigned long va);
 
 void new_page_tables(struct task_struct* task);
 void delete_page_tables(struct task_struct* task);
+void copy_page_tables(struct task_struct* dst, struct task_struct* src);
 
 #endif
 
