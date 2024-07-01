@@ -215,9 +215,9 @@ int copy_virt_memory(struct task_struct* dst)
         unsigned long kernel_va = allocate_user_pages(
             dst, vm_area->vm_type, vm_area->va_start, vm_area->area_sz, 0,
             vm_area->vm_prot, vm_area->vm_flags);
-        if (!kernel_va)
+        if (kernel_va == VA_START)
             return -1;
-        memcpy((void*)kernel_va, (const void*)vm_area->va_start,
+        memcpy((void*)kernel_va, (const void*)vm_area->pa_start,
                vm_area->area_sz);
     }
 
