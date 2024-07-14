@@ -11,3 +11,8 @@ tags
 *.cpio
 *.dtb
 .cache/
+1_py3_rplugin
+1_py3_script
+*.gpr
+*.lock*
+*.rep
